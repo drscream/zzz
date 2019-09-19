@@ -1,0 +1,45 @@
+#!/bin/sh
+# Minimal script which more or less overwrites original `zzz` because I love
+# this command!
+
+# Default prefix for GUI tools so extending the PATH
+PATH=${PATH}:/usr/local/bin:/usr/local/sbin
+
+# Detect current user executing the script to support doas usage as regular
+# user.
+DOAS=''
+if [ "$(id -u)" != 0 ]; then
+	DOAS=$(which doas)
+fi
+
+# Try to find the first user above 1000 who hopefully run the window manager
+# to lock. No more detection is made because it's more or less a single user
+# device.
+for uid in $(seq 1000 2000); do
+	if PASSWD=$(getent passwd ${uid}); then
+		USER=$(echo ${PASSWD} | awk -F \: '{ print $1 }')
+		break
+	fi
+done
+
+# If a second parameter is provided it's the LID status from devd $notify
+# event. The script will stop and exit on lid status equals 1 because it's the
+# LID open state.
+if [ "${1}" = 1 ]; then
+	logger -t zzz "Canceled sleeping process, LID has been opened for ${USER}"
+	exit 1
+fi
+
+logger -t zzz "Going to sleep, called for ${USER}"
+
+# Trying to delete some local ssh cache files for the user, to make later ssh
+# connections easier after resume.
+${DOAS} rm -f ~${USER}/.ssh/cache/*
+
+# Log the screen via xlock fall for the specified user selection. The xlock
+# command require to run in background otherwise it blocks ongoing connections.
+su ${USER} -c 'DISPLAY=:0 /usr/local/bin/xlock -display :0' &
+
+# Start the real suspend by using acpiconf, because apm is not required on my
+# Thinkpad.
+${DOAS} acpiconf -s 3
